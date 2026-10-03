@@ -44,7 +44,10 @@ export default class DesktopAutomationExtension extends Extension {
             this._dbus.unexport();
             this._dbus = null;
         }
-        this._service = null;
+        if (this._service) {
+            this._service.destroy();
+            this._service = null;
+        }
         this._settings = null;
         console.log('[DesktopAutomation] Extension disabled');
     }

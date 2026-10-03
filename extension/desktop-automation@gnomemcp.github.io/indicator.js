@@ -10,6 +10,7 @@ class AutomationIndicator extends PanelMenu.Button {
         super._init(0.0, 'Desktop Automation');
         this._service = service;
         this._activityTimerId = null;
+        this._flashTimerId = null;
         this._hasFlashed = false;
 
         this._icon = new St.Icon({
@@ -72,8 +73,11 @@ class AutomationIndicator extends PanelMenu.Button {
         if (!this._hasFlashed && this._service.enabled) {
             this._hasFlashed = true;
             this._icon.add_style_class_name('flash');
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+            if (this._flashTimerId)
+                GLib.source_remove(this._flashTimerId);
+            this._flashTimerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
                 this._icon.remove_style_class_name('flash');
+                this._flashTimerId = null;
                 return GLib.SOURCE_REMOVE;
             });
         }
@@ -119,6 +123,10 @@ class AutomationIndicator extends PanelMenu.Button {
         if (this._activityTimerId) {
             GLib.source_remove(this._activityTimerId);
             this._activityTimerId = null;
+        }
+        if (this._flashTimerId) {
+            GLib.source_remove(this._flashTimerId);
+            this._flashTimerId = null;
         }
         super.destroy();
     }

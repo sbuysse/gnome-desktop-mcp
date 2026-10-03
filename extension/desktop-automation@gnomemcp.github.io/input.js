@@ -23,10 +23,45 @@ export function keyPress(keyval) {
     return true;
 }
 
+const KEY_MAP = {
+    'return': 0xff0d, 'enter': 0xff0d, 'backspace': 0xff08, 'tab': 0xff09,
+    'escape': 0xff1b, 'esc': 0xff1b, 'delete': 0xffff, 'del': 0xffff,
+    'insert': 0xff63, 'ins': 0xff63, 'home': 0xff50, 'end': 0xff57,
+    'page_up': 0xff55, 'pageup': 0xff55, 'prior': 0xff55,
+    'page_down': 0xff56, 'pagedown': 0xff56, 'next': 0xff56,
+    'left': 0xff51, 'up': 0xff52, 'right': 0xff53, 'down': 0xff54,
+    'control_l': 0xffe3, 'control_r': 0xffe4, 'ctrl': 0xffe3, 'control': 0xffe3,
+    'shift_l': 0xffe1, 'shift_r': 0xffe2, 'shift': 0xffe1,
+    'alt_l': 0xffe9, 'alt_r': 0xffea, 'alt': 0xffe9,
+    'super_l': 0xffeb, 'super_r': 0xffec, 'super': 0xffeb, 'meta': 0xffeb, 'win': 0xffeb,
+    'space': 0x0020,
+    'f1': 0xffbe, 'f2': 0xffbf, 'f3': 0xffc0, 'f4': 0xffc1,
+    'f5': 0xffc2, 'f6': 0xffc3, 'f7': 0xffc4, 'f8': 0xffc5,
+    'f9': 0xffc6, 'f10': 0xffc7, 'f11': 0xffc8, 'f12': 0xffc9
+};
+
+function _keyvalFromName(k) {
+    if (typeof Clutter.keyval_from_name === 'function') {
+        const v = Clutter.keyval_from_name(k);
+        if (v !== 0) return v;
+    }
+    const lower = k.toLowerCase();
+    if (KEY_MAP[lower] !== undefined) {
+        return KEY_MAP[lower];
+    }
+    if (Clutter['KEY_' + k] !== undefined) {
+        return Clutter['KEY_' + k];
+    }
+    if (k.length === 1) {
+        return k.codePointAt(0);
+    }
+    return 0;
+}
+
 export function keyCombo(combo) {
     const keys = combo.split('+').map(k => k.trim());
     const keyvals = keys.map(k => {
-        const kv = Clutter.keyval_from_name(k);
+        const kv = _keyvalFromName(k);
         if (kv === 0)
             throw new Error(`Unknown key name: ${k}`);
         return kv;
@@ -138,6 +173,7 @@ export function mouseScroll(x, y, dx, dy) {
     const now = GLib.get_monotonic_time();
     vmouse.notify_absolute_motion(now, x, y);
     vmouse.notify_scroll_continuous(now + 10000, dx, dy,
+        Clutter.ScrollSource.WHEEL,
         Clutter.ScrollFinishFlags.NONE);
     return true;
 }

@@ -108,7 +108,55 @@ class DbusClient:
         return self._call("ScreenshotArea", x, y, width, height, include_cursor)
 
     def pick_color(self, x: int, y: int) -> tuple[float, float, float]:
-        return self._call("PickColor", x, y)
+        # Shell.Screenshot.pick_color_finish returns a CoglColor boxed type
+        # that GJS cannot introspect reliably on Mutter 47 (channels read as
+        # NaN). Compute the pixel from a 1x1 screenshot_area instead, which
+        # goes through the same D-Bus surface but returns a plain PNG.
+        import struct, zlib
+        path = self.screenshot_area(x, y, 1, 1)
+        try:
+            data = open(path, 'rb').read()
+        finally:
+            try:
+                import os
+                os.unlink(path)
+            except OSError:
+                pass
+        pos = 8
+        idat = b''
+        w = h = colortype = None
+        while pos < len(data):
+            ln = struct.unpack('>I', data[pos:pos+4])[0]
+            typ = data[pos+4:pos+8]
+            chunk = data[pos+8:pos+8+ln]
+            if typ == b'IHDR':
+                w, h, _depth, colortype = struct.unpack('>IIBB', chunk[:10])
+            elif typ == b'IDAT':
+                idat += chunk
+            pos += 12 + ln
+        channels = {2: 3, 6: 4}.get(colortype or 0)
+        if not channels or w != 1 or h != 1:
+            raise ScreenshotFailedError("pick_color: unexpected screenshot data")
+        raw = zlib.decompress(idat)
+        ft = raw[0]
+        px = bytearray(raw[1:1+channels])
+        if ft == 1:
+            for i in range(1, channels):
+                px[i] = (px[i] + px[i-1]) & 255
+        elif ft == 2:
+            pass  # first row, no previous
+        elif ft == 3:
+            for i in range(1, channels):
+                px[i] = (px[i] + (px[i-1] >> 1)) & 255
+        elif ft == 4:
+            for i in range(1, channels):
+                a = px[i-1]
+                b = 0; c = 0
+                p = a + b - c
+                pa, pb, pc = abs(p-a), abs(p-b), abs(p-c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                px[i] = (px[i] + pr) & 255
+        return (px[0] / 255.0, px[1] / 255.0, px[2] / 255.0)
 
     # --- Windows ---
 
