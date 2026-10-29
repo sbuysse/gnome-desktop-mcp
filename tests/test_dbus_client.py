@@ -33,10 +33,17 @@ def test_list_windows(mock_proxy):
 
 def test_screenshot(mock_proxy):
     client, proxy = mock_proxy
-    proxy.Screenshot.return_value = "/tmp/gnome-mcp/screenshot-123.png"
+    proxy.Screenshot.return_value = "/run/user/1000/gnome-mcp/screenshot-123.png"
     result = client.screenshot(False)
-    assert result == "/tmp/gnome-mcp/screenshot-123.png"
+    assert result == "/run/user/1000/gnome-mcp/screenshot-123.png"
     proxy.Screenshot.assert_called_once_with(False, timeout=5000)
+
+
+def test_key_combo_sends_keyvals(mock_proxy):
+    client, proxy = mock_proxy
+    proxy.KeyCombo.return_value = True
+    assert client.key_combo([65507, ord("c")]) is True
+    proxy.KeyCombo.assert_called_once_with([65507, 99], timeout=5000)
 
 
 def test_error_disabled():

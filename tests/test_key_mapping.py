@@ -1,4 +1,10 @@
-from gnome_desktop_mcp.utils import friendly_to_clutter_name, friendly_to_keyval, translate_combo
+import pytest
+
+from gnome_desktop_mcp.utils import (
+    combo_to_keyvals,
+    friendly_to_clutter_name,
+    friendly_to_keyval,
+)
 
 
 def test_ctrl_maps_to_control_l():
@@ -70,10 +76,36 @@ def test_single_letter():
     assert friendly_to_clutter_name("z") == "z"
 
 
-def test_combo_translation():
-    assert translate_combo("Ctrl+Alt+t") == "Control_L+Alt_L+t"
-    assert translate_combo("Shift+F5") == "Shift_L+F5"
-    assert translate_combo("Super+l") == "Super_L+l"
+def test_combo_to_keyvals():
+    assert combo_to_keyvals("Ctrl+Alt+t") == [65507, 65513, ord("t")]
+    assert combo_to_keyvals("Shift+F5") == [65505, 65474]
+    assert combo_to_keyvals("Super+l") == [65515, ord("l")]
+
+
+def test_combo_to_keyvals_tolerates_spaces():
+    assert combo_to_keyvals(" Ctrl + c ") == [65507, ord("c")]
+
+
+def test_combo_to_keyvals_single_key():
+    assert combo_to_keyvals("Return") == [65293]
+
+
+def test_combo_to_keyvals_punctuation():
+    # "Ctrl++" is ambiguous, so the + key is spelled by its keysym name.
+    assert combo_to_keyvals("Ctrl+plus") == [65507, 43]
+    assert combo_to_keyvals("Ctrl+Plus") == [65507, 43]
+    assert combo_to_keyvals("Ctrl+minus") == [65507, 45]
+
+
+@pytest.mark.parametrize("combo", ["", "+", "Ctrl+", "+a", "Ctrl++a", "Ctrl + + a"])
+def test_combo_to_keyvals_rejects_malformed(combo):
+    with pytest.raises(ValueError):
+        combo_to_keyvals(combo)
+
+
+def test_combo_to_keyvals_rejects_unknown_key():
+    with pytest.raises(ValueError):
+        combo_to_keyvals("Ctrl+NoSuchKey")
 
 
 def test_keyval_known_keys():
@@ -91,3 +123,18 @@ def test_keyval_ctrl():
 def test_keyval_single_char():
     assert friendly_to_keyval("a") == ord("a")
     assert friendly_to_keyval("Z") == ord("Z")
+
+
+def test_keyval_latin1_char_is_its_codepoint():
+    # Latin-1 codepoints are X11 keysyms as-is.
+    assert friendly_to_keyval("\u00e4") == 0xE4
+
+
+def test_keyval_beyond_latin1_uses_unicode_keysym():
+    # Above Latin-1, X11 wants 0x01000000 | codepoint.
+    assert friendly_to_keyval("\u20ac") == 0x01000000 | 0x20AC
+
+
+def test_keyval_rejects_unknown_name():
+    with pytest.raises(ValueError):
+        friendly_to_keyval("NoSuchKey")
