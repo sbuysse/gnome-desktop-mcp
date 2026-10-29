@@ -23,23 +23,19 @@ export function keyPress(keyval) {
     return true;
 }
 
-export function keyCombo(combo) {
-    const keys = combo.split('+').map(k => k.trim());
-    const keyvals = keys.map(k => {
-        const kv = Clutter.keyval_from_name(k);
-        if (kv === 0)
-            throw new Error(`Unknown key name: ${k}`);
-        return kv;
-    });
-
+// Takes resolved X11 keyvals, not key names: Clutter has no keyval_from_name()
+// to call from inside the Shell, so the MCP server resolves names before the
+// call reaches us (see utils.combo_to_keyvals).
+export function keyCombo(keyvals) {
     const vkbd = _createKeyboard();
     let time = GLib.get_monotonic_time();
 
-    for (const kv of keyvals) {
-        vkbd.notify_keyval(time, kv, Clutter.KeyState.PRESSED);
+    for (const keyval of keyvals) {
+        vkbd.notify_keyval(time, keyval, Clutter.KeyState.PRESSED);
         time += 10000;
     }
 
+    // Released in reverse, so modifiers outlive the key they modify.
     for (let i = keyvals.length - 1; i >= 0; i--) {
         vkbd.notify_keyval(time, keyvals[i], Clutter.KeyState.RELEASED);
         time += 10000;

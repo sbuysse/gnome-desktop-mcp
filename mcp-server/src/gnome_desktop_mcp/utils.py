@@ -26,6 +26,9 @@ _KEY_NAME_MAP = {
     "Down": "Down",
     "Left": "Left",
     "Right": "Right",
+    "Plus": "plus",
+    "Minus": "minus",
+    "Equal": "equal",
 }
 
 # Add F1-F12
@@ -52,6 +55,21 @@ _KEYVAL_MAP = {
     "Down": 65364,
     "Left": 65361,
     "Right": 65363,
+    # Punctuation. For these the X11 keysym is the ASCII code, and the canonical
+    # keysym name is what a combo should spell: "Ctrl+plus", not "Ctrl++",
+    # because '+' is the separator.
+    "plus": 43,
+    "minus": 45,
+    "equal": 61,
+    "comma": 44,
+    "period": 46,
+    "slash": 47,
+    "backslash": 92,
+    "semicolon": 59,
+    "apostrophe": 39,
+    "grave": 96,
+    "bracketleft": 91,
+    "bracketright": 93,
 }
 
 # Add F1-F12
@@ -72,14 +90,30 @@ def friendly_to_keyval(key: str) -> int:
     if clutter_name in _KEYVAL_MAP:
         return _KEYVAL_MAP[clutter_name]
     if len(clutter_name) == 1:
-        return ord(clutter_name)
+        codepoint = ord(clutter_name)
+        # Latin-1 codepoints double as X11 keysyms; anything above needs the
+        # Unicode keysym convention, the same rule input.js applies in
+        # typeText().
+        if codepoint <= 0xFF:
+            return codepoint
+        return 0x01000000 | codepoint
     raise ValueError(f"Unknown key: {key}")
 
 
-def translate_combo(combo: str) -> str:
-    """Translate a friendly combo like 'Ctrl+Alt+t' to 'Control_L+Alt_L+t'."""
-    parts = combo.split("+")
-    return "+".join(friendly_to_clutter_name(p.strip()) for p in parts)
+def combo_to_keyvals(combo: str) -> list[int]:
+    """Translate a friendly combo like 'Ctrl+Alt+t' into X11 keyvals.
+
+    The lookup happens on this side rather than in the extension because
+    Clutter exposes no name-to-keyval function for the Shell to call: it has
+    keyval_name() for the reverse direction, and nothing for this one.
+    """
+    parts = [part.strip() for part in combo.split("+")]
+    if not parts or any(not part for part in parts):
+        raise ValueError(
+            f"Malformed key combo {combo!r}. Use names joined by '+', as in "
+            "'Ctrl+Alt+t'; for the + key itself use its keysym name, 'plus'."
+        )
+    return [friendly_to_keyval(part) for part in parts]
 
 
 def file_to_base64(filepath: str) -> str:

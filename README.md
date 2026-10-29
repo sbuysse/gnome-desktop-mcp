@@ -14,10 +14,10 @@ GNOME Wayland blocks external processes from taking screenshots or injecting inp
 
 ## Features
 
-- **30 MCP tools**: screenshots, window management, input injection, workspace control
+- **29 MCP tools**: screenshots, window management, input injection, workspace control
 - **Privacy indicator**: top bar icon shows connection status (red = active, grey = idle)
-- **Consent dialog**: first-use confirmation before enabling automation
-- **Access gating**: master kill switch to disable all automation instantly
+- **Consent dialog**: first-use notice when the extension is enabled
+- **Access gating**: master kill switch; automation can only be armed from the top bar menu, not over D-Bus
 
 ## Requirements
 
@@ -25,6 +25,24 @@ GNOME Wayland blocks external processes from taking screenshots or injecting inp
 - Python 3.12+
 
 ## Installation
+
+### Fedora (RPM)
+
+Builds two packages -- the extension and the MCP server -- with dependencies
+resolved from Fedora's repositories, so `dnf remove` takes everything with it:
+
+```bash
+./packaging/build-rpm.sh
+sudo dnf install ./dist/*.noarch.rpm
+```
+
+The extension lands in `/usr/share/gnome-shell/extensions/`, system-wide but
+still enabled per user. The GSettings schema is installed as XML to
+`/usr/share/glib-2.0/schemas/` and compiled by glib2's file triggers, so no
+scriptlets run and nothing is left stale on removal.
+
+If the binary build stops and asks for the Python build backend, run
+`sudo dnf builddep dist/*.src.rpm` and re-run the script.
 
 ### Quick install (development)
 
@@ -105,15 +123,24 @@ Add to `~/.claude/settings.json`:
 | Tool | Description |
 |---|---|
 | `ping` | Check extension is alive |
-| `get_enabled` / `set_enabled` | Check/toggle automation |
+| `get_enabled` | Check whether automation is enabled |
 | `get_monitors` | List monitors with geometry |
+
+Automation is deliberately not switchable from MCP — only from the top bar menu.
 
 ## Privacy
 
-- **Top bar indicator** shows when automation is active
-- **Toggle switch** to disable all automation instantly
-- **Activity log** tracks last 20 method calls (name + timestamp only, no data)
-- **D-Bus access gating**: all methods blocked when disabled
+- **Top bar indicator** shows when automation is active, and always reflects the
+  service's real state — including changes made over D-Bus
+- **Toggle switch** to disable all automation instantly. Automation can only be
+  *enabled* from this menu: `SetEnabled(true)` over D-Bus is refused, so no other
+  process (and no MCP client) can re-arm it behind your back
+- **Activity log** tracks last 20 method calls (name + timestamp only, no data),
+  marking calls that were blocked
+- **D-Bus access gating**: all automation methods blocked when disabled
+- **Screenshots** are written 0600 to `$XDG_RUNTIME_DIR/gnome-mcp` (not `/tmp`),
+  so no other local user can read or tamper with them. They persist until
+  `cleanup_screenshots` runs or you log out
 - **Session bus trust model**: any local user process can call the API (consistent with GNOME's security model)
 
 ## Architecture
@@ -133,7 +160,8 @@ The Python MCP server (`gnome-desktop-mcp`) translates MCP tool calls into D-Bus
 pip install -e mcp-server[dev]
 
 # Run tests
-python -m pytest tests/ -v
+python -m pytest tests/ -v          # MCP server
+./tests/extension/run.sh            # GNOME Shell extension (needs gjs)
 
 # Watch extension logs
 journalctl /usr/bin/gnome-shell -f

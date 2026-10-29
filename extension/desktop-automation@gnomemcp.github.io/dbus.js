@@ -89,8 +89,9 @@ const INTERFACE_XML = `
       <arg type="u" direction="in" name="keyval"/>
       <arg type="b" direction="out" name="success"/>
     </method>
+    <!-- Keyvals, not key names: Clutter cannot resolve names inside the Shell. -->
     <method name="KeyCombo">
-      <arg type="s" direction="in" name="combo"/>
+      <arg type="au" direction="in" name="keyvals"/>
       <arg type="b" direction="out" name="success"/>
     </method>
     <method name="TypeText">
@@ -146,6 +147,7 @@ const INTERFACE_XML = `
     <method name="GetMonitors">
       <arg type="s" direction="out" name="monitorsJson"/>
     </method>
+    <!-- Only accepts false; enabling requires the panel toggle. -->
     <method name="SetEnabled">
       <arg type="b" direction="in" name="enabled"/>
       <arg type="b" direction="out" name="success"/>
@@ -171,15 +173,30 @@ export class DbusService {
         this._enabled = false;
         this._activityLog = [];
         this._onActivity = null;
+        this._onEnabledChanged = null;
     }
 
     get enabled() { return this._enabled; }
-    set enabled(value) { this._enabled = value; }
+
+    set enabled(value) {
+        const next = !!value;
+        if (next === this._enabled)
+            return;
+        this._enabled = next;
+        if (this._onEnabledChanged)
+            this._onEnabledChanged(next);
+    }
+
     get activityLog() { return this._activityLog; }
     set onActivity(callback) { this._onActivity = callback; }
+    set onEnabledChanged(callback) { this._onEnabledChanged = callback; }
 
-    _logActivity(methodName) {
-        const entry = { method: methodName, timestamp: new Date().toISOString() };
+    _logActivity(methodName, allowed = true) {
+        const entry = {
+            method: methodName,
+            timestamp: new Date().toISOString(),
+            allowed,
+        };
         this._activityLog.push(entry);
         if (this._activityLog.length > 20)
             this._activityLog.shift();
@@ -188,8 +205,8 @@ export class DbusService {
     }
 
     _checkEnabled(invocation, methodName) {
-        this._logActivity(methodName);
         if (!this._enabled) {
+            this._logActivity(methodName, false);
             invocation.return_error_literal(
                 Gio.DBusError,
                 Gio.DBusError.FAILED,
@@ -197,6 +214,7 @@ export class DbusService {
             );
             return false;
         }
+        this._logActivity(methodName);
         return true;
     }
 
@@ -213,8 +231,23 @@ export class DbusService {
     }
 
     SetEnabledAsync([enabled], invocation) {
+        // Enabling over D-Bus is refused on purpose. The session bus is shared
+        // by every process running as this user, so an open SetEnabled(true)
+        // would let any of them re-arm automation the user had switched off --
+        // making the panel toggle advisory rather than a kill switch. Turning
+        // automation OFF stays open to any caller: that direction is safe.
+        if (enabled) {
+            this._logActivity('SetEnabled', false);
+            invocation.return_error_literal(
+                Gio.DBusError,
+                Gio.DBusError.ACCESS_DENIED,
+                `${ERROR_DOMAIN}.AccessDenied: Automation can only be enabled `
+                + 'from the Desktop Automation menu in the GNOME top bar'
+            );
+            return;
+        }
         this._logActivity('SetEnabled');
-        this._enabled = enabled;
+        this.enabled = false;
         invocation.return_value(GLib.Variant.new('(b)', [true]));
     }
 
@@ -407,10 +440,19 @@ export class DbusService {
         }
     }
 
-    KeyComboAsync([combo], invocation) {
+    KeyComboAsync([keyvals], invocation) {
         if (!this._checkEnabled(invocation, 'KeyCombo')) return;
+        // Checked here so an empty combo cannot reach the virtual keyboard.
+        if (!keyvals || keyvals.length === 0) {
+            invocation.return_error_literal(
+                Gio.DBusError,
+                Gio.DBusError.INVALID_ARGS,
+                `${ERROR_DOMAIN}.InputFailed: a key combo needs at least one keyval`
+            );
+            return;
+        }
         try {
-            Input.keyCombo(combo);
+            Input.keyCombo(keyvals);
             invocation.return_value(GLib.Variant.new('(b)', [true]));
         } catch (e) {
             invocation.return_error_literal(Gio.DBusError, Gio.DBusError.FAILED,

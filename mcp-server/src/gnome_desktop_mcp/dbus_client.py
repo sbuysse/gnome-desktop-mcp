@@ -85,6 +85,13 @@ class DbusClient:
         return self._call("GetEnabled")
 
     def set_enabled(self, enabled: bool) -> bool:
+        """Turn automation off.
+
+        Only ``False`` is accepted: the extension refuses to enable automation
+        over D-Bus, so that the panel toggle stays a real kill switch rather
+        than one any session process can flip back on. Passing ``True`` raises
+        a D-Bus AccessDenied error.
+        """
         return self._call("SetEnabled", enabled)
 
     def get_monitors(self) -> list[dict]:
@@ -151,8 +158,13 @@ class DbusClient:
     def key_press(self, keyval: int) -> bool:
         return self._call("KeyPress", keyval)
 
-    def key_combo(self, combo: str) -> bool:
-        return self._call("KeyCombo", combo)
+    def key_combo(self, keyvals: list[int]) -> bool:
+        """Press and release a combination, given as X11 keyvals.
+
+        Keyvals rather than a name string: the extension has no way to resolve
+        key names, so the translation belongs to utils.combo_to_keyvals().
+        """
+        return self._call("KeyCombo", keyvals)
 
     def type_text(self, text: str) -> bool:
         return self._call("TypeText", text)
