@@ -21,7 +21,7 @@ GNOME Wayland blocks external processes from taking screenshots or injecting inp
 
 ## Requirements
 
-- GNOME Shell 45-49 (Wayland)
+- GNOME Shell 45-50 (Wayland)
 - Python 3.12+
 
 ## Installation
